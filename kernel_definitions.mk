@@ -35,7 +35,7 @@ TARGET_KERNEL_MAKE_ENV += M4=$(SOURCE_ROOT)/prebuilts/build-tools/$(HOST_OS)-x86
 TARGET_KERNEL_MAKE_CFLAGS = "-I/usr/include -I/usr/include/x86_64-linux-gnu -L/usr/lib -L/usr/lib/x86_64-linux-gnu -fuse-ld=lld"
 TARGET_KERNEL_MAKE_LDFLAGS = "-L/usr/lib -L/usr/lib/x86_64-linux-gnu -fuse-ld=lld"
 
-KERNEL_LLVM_BIN := $(lastword $(sort $(wildcard $(SOURCE_ROOT)/$(LLVM_PREBUILTS_BASE)/$(BUILD_OS)-x86/clang-4*)))/bin/clang
+KERNEL_LLVM_PATH := $(lastword $(sort $(wildcard $(SOURCE_ROOT)/$(LLVM_PREBUILTS_BASE)/$(BUILD_OS)-x86/clang-4*)))/bin
 
 KERNEL_TARGET := $(strip $(INSTALLED_KERNEL_TARGET))
 ifeq ($(KERNEL_TARGET),)
@@ -83,22 +83,23 @@ real_cc :=
 ifeq ($(KERNEL_LLVM_SUPPORT),true)
   ifeq ($(KERNEL_SD_LLVM_SUPPORT), true)  #Using sd-llvm compiler
     ifeq ($(shell echo $(SDCLANG_PATH) | head -c 1),/)
-       KERNEL_LLVM_BIN := $(SDCLANG_PATH)/clang
+       KERNEL_LLVM_PATH := $(SDCLANG_PATH)
     else
-       KERNEL_LLVM_BIN := $(shell pwd)/$(SDCLANG_PATH)/clang
+       KERNEL_LLVM_PATH := $(shell pwd)/$(SDCLANG_PATH)
     endif
-    $(info "Using sdllvm" $(KERNEL_LLVM_BIN))
+    $(info "Using sdllvm" $(KERNEL_LLVM_PATH))
   else
-    KERNEL_LLVM_BIN := $(shell pwd)/$(CLANG) #Using aosp-llvm compiler
-    $(info "Using aosp-llvm" $(KERNEL_LLVM_BIN))
+    KERNEL_LLVM_PATH := $(shell dirname $(CLANG)) #Using aosp-llvm compiler
+    $(info "Using aosp-llvm" $(KERNEL_LLVM_PATH))
   endif
   ifeq ($(KERNEL_ARCH), arm64)
-      real_cc := REAL_CC=$(KERNEL_LLVM_BIN) CLANG_TRIPLE=aarch64-linux-gnu-
-      cc := CC=$(KERNEL_LLVM_BIN) CLANG_TRIPLE=aarch64-linux-gnu-
+      real_cc := REAL_CC=clang CLANG_TRIPLE=aarch64-linux-gnu-
+      cc := CC=clang CLANG_TRIPLE=aarch64-linux-gnu-
   else
-      real_cc := REAL_CC=$(KERNEL_LLVM_BIN) CLANG_TRIPLE=arm-linux-gnueabihf
-      cc := CC=$(KERNEL_LLVM_BIN) CLANG_TRIPLE=arm-linux-gnueabihf
+      real_cc := REAL_CC=clang CLANG_TRIPLE=arm-linux-gnueabihf
+      cc := CC=clang CLANG_TRIPLE=arm-linux-gnueabihf
   endif
+  ld := LD=ld.lld
 else
 ifeq ($(strip $(KERNEL_GCC_NOANDROID_CHK)),0)
 KERNEL_CFLAGS := KCFLAGS=-mno-android
@@ -158,6 +159,7 @@ MAKE_PATH := $(SOURCE_ROOT)/prebuilts/build-tools/linux-x86/bin/
 # Android Kernel make rules
 
 $(KERNEL_HEADERS_INSTALL): $(KERNEL_OUT) $(DTC) #$(UFDT_APPLY_OVERLAY)
+	PATH=$(KERNEL_LLVM_PATH):$$PATH \
 	KERNEL_DIR=$(TARGET_KERNEL_SOURCE) \
 	DEFCONFIG=$(KERNEL_DEFCONFIG) \
 	OUT_DIR=$(KERNEL_OUT) \
@@ -175,6 +177,7 @@ $(KERNEL_HEADERS_INSTALL): $(KERNEL_OUT) $(DTC) #$(UFDT_APPLY_OVERLAY)
 	device/qcom/kernelscripts/buildkernel.sh \
 	$(real_cc) \
 	$(cc) \
+	$(ld) \
 	$(TARGET_KERNEL_MAKE_ENV)
 
 $(KERNEL_OUT):
@@ -185,6 +188,7 @@ $(KERNEL_USR): $(KERNEL_HEADERS_INSTALL)
 	ln -s kernel/$(TARGET_KERNEL) $(KERNEL_SYMLINK)
 
 $(TARGET_PREBUILT_KERNEL): $(KERNEL_OUT) $(DTC) $(KERNEL_USR)
+	PATH=$(KERNEL_LLVM_PATH):$$PATH \
 	KERNEL_DIR=$(TARGET_KERNEL_SOURCE) \
 	DEFCONFIG=$(KERNEL_DEFCONFIG) \
 	OUT_DIR=$(KERNEL_OUT) \
@@ -201,6 +205,7 @@ $(TARGET_PREBUILT_KERNEL): $(KERNEL_OUT) $(DTC) $(KERNEL_USR)
 	device/qcom/kernelscripts/buildkernel.sh \
 	$(real_cc) \
 	$(cc) \
+	$(ld) \
 	$(TARGET_KERNEL_MAKE_ENV)
 
 $(INSTALLED_KERNEL_TARGET): $(TARGET_PREBUILT_KERNEL) | $(ACP)
